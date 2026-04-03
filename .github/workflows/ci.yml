@@ -1,57 +1,16 @@
 name: CI
 
 on:
-push:
-branches:
-- main
-pull_request:
+  push:
+    branches:
+      - main
+  pull_request:
 
 permissions:
-actions: read
-contents: read
+  actions: read
+  contents: read
 
 jobs:
-<<<<<<< nx-cloud-setup
-main:
-runs-on: ubuntu-latest
-
-```
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      filter: tree:0
-      fetch-depth: 0
-
-  # Start Nx Cloud distributed execution early
-  - name: Start Nx Cloud CI run
-    run: npx nx start-ci-run --distribute-on="3 linux-medium-js" --stop-agents-after="e2e"
-
-  # Setup Node.js with dependency caching
-  - name: Setup Node.js
-    uses: actions/setup-node@v4
-    with:
-      node-version: 20
-      cache: npm
-
-  # Install dependencies
-  - name: Install dependencies
-    run: npm ci
-
-  # Check formatting
-  - name: Check formatting
-    run: npx nx record -- npx nx format:check --base="remotes/origin/main"
-
-  # Run lint, tests, build, typecheck and e2e
-  - name: Run Nx tasks
-    run: npx nx run-many -t lint test build typecheck e2e
-
-  # Apply Nx Cloud self-healing suggestions
-  - name: Apply Nx Cloud fixes
-    if: always()
-    run: npx nx fix-ci
-```
-=======
   main:
     runs-on: ubuntu-latest
     steps:
@@ -89,4 +48,3 @@ steps:
         if: always()
         env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
->>>>>>> main
