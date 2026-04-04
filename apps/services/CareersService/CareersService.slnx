@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="CareersService.API/CareersService.API.csproj" />
+  <Project Path="CareersService.Application/CareersService.Application.csproj" />
+  <Project Path="CareersService.Domain/CareersService.Domain.csproj" />
+  <Project Path="CareersService.Infrastructure/CareersService.Infrastructure.csproj" />
+  <Project Path="CareersService.Tests/CareersService.Tests.csproj" />
+</Solution>

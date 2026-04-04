@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="CandidateService.API/CandidateService.API.csproj" />
+  <Project Path="CandidateService.Application/CandidateService.Application.csproj" />
+  <Project Path="CandidateService.Domain/CandidateService.Domain.csproj" />
+  <Project Path="CandidateService.Infrastructure/CandidateService.Infrastructure.csproj" />
+  <Project Path="CandidateService.Tests/CandidateService.Tests.csproj" />
+</Solution>

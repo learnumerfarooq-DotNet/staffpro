@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!-- No NuGet packages in Domain — pure C# only! -->
+		<!-- Domain must have ZERO external dependencies -->
+	</PropertyGroup>
+
+</Project>

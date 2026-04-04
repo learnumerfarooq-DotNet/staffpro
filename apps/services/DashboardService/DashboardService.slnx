@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="DashboardService.API/DashboardService.API.csproj" />
+  <Project Path="DashboardService.Application/DashboardService.Application.csproj" />
+  <Project Path="DashboardService.Domain/DashboardService.Domain.csproj" />
+  <Project Path="DashboardService.Infrastructure/DashboardService.Infrastructure.csproj" />
+  <Project Path="DashboardService.Tests/DashboardService.Tests.csproj" />
+</Solution>
