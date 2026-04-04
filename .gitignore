@@ -55,13 +55,17 @@ out-tsc/
 *.env
 appsettings.Development.json
 appsettings.Production.json
+appsettings.Staging.json
 secrets.json
 **/Secrets/
+**/*secrets*
+**/*password*
 
 # ─────────────────────────────────────────
 # Docker
 # ─────────────────────────────────────────
 docker-compose.override.yml
+infrastructure/docker-compose.override.yml
 
 # ─────────────────────────────────────────
 # Test Results & Coverage
@@ -91,6 +95,10 @@ Desktop.ini
 *.vsidx
 *.vsuserdata
 .angular
+.vscode/settings.json
 
+# ─────────────────────────────────────────
+# Claude AI
+# ─────────────────────────────────────────
 .claude/worktrees
 .claude/settings.local.json

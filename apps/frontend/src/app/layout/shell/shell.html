@@ -1,1 +1,67 @@
-<p>shell works!</p>
+<!-- ─────────────────────────────────────────────────────────────────────
+  shell.component.html — Application Shell Template
+───────────────────────────────────────────────────────────────────────── -->
+
+<div class="shell-container" [class.sidebar-open]="isSidebarOpen()">
+  <!-- ── TOP HEADER BAR ── -->
+  <mat-toolbar class="shell-header" color="primary">
+    <!-- Hamburger menu button (toggle sidebar) -->
+    <button mat-icon-button (click)="toggleSidebar()" aria-label="Toggle sidebar">
+      <mat-icon>{{ isSidebarOpen() ? 'menu_open' : 'menu' }}</mat-icon>
+    </button>
+
+    <!-- App Logo + Name -->
+    <div class="header-brand">
+      <img src="assets/images/logo.svg" alt="StaffPro" class="logo" />
+      <span class="brand-name">StaffPro</span>
+    </div>
+
+    <!-- Spacer pushes everything to the right -->
+    <span class="spacer"></span>
+
+    <!-- User avatar + dropdown menu -->
+    @if (currentUser(); as user) {
+      <div class="user-menu">
+        <button mat-button [matMenuTriggerFor]="userMenu" class="user-button">
+          <div class="user-avatar">{{ userInitials() }}</div>
+          <span class="user-name">{{ user.name }}</span>
+          <mat-icon>arrow_drop_down</mat-icon>
+        </button>
+
+        <mat-menu #userMenu="matMenu">
+          <div class="menu-user-info">
+            <span class="menu-name">{{ user.name }}</span>
+            <span class="menu-email">{{ user.email }}</span>
+          </div>
+          <mat-divider />
+          <button mat-menu-item routerLink="/profile">
+            <mat-icon>person</mat-icon>
+            <span>My Profile</span>
+          </button>
+          <button mat-menu-item routerLink="/settings">
+            <mat-icon>settings</mat-icon>
+            <span>Settings</span>
+          </button>
+          <mat-divider />
+          <button mat-menu-item (click)="logout()" class="logout-btn">
+            <mat-icon>logout</mat-icon>
+            <span>Sign Out</span>
+          </button>
+        </mat-menu>
+      </div>
+    }
+  </mat-toolbar>
+
+  <!-- ── BODY (sidebar + content) ── -->
+  <div class="shell-body">
+    <!-- Sidebar Navigation -->
+    <aside class="shell-sidebar" [class.collapsed]="!isSidebarOpen()">
+      <app-sidebar />
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="shell-content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

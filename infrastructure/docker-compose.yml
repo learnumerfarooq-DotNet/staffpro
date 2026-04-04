@@ -1,0 +1,143 @@
+version: '3.9'
+
+networks:
+  staffpro-network:
+    name: staffpro-network
+    driver: bridge
+
+volumes:
+  sqldata:
+    name: staffpro-sqldata
+    driver: local
+  mongodata:
+    name: staffpro-mongodata
+    driver: local
+  rabbitmqdata:
+    name: staffpro-rabbitmqdata
+    driver: local
+  elasticdata:
+    name: staffpro-elasticdata
+    driver: local
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: staffpro-sqlserver
+    hostname: staffpro-sqlserver
+    networks:
+      - staffpro-network
+    environment:
+      SA_PASSWORD: 'StaffPro@Dev2024!'
+      ACCEPT_EULA: 'Y'
+      MSSQL_PID: 'Developer'
+      MSSQL_AGENT_ENABLED: 'true'
+    ports:
+      - '1433:1433'
+    volumes:
+      - sqldata:/var/opt/mssql
+      - ./docker/sql/init.sql:/init/init.sql # ← changed (was entrypoint-initdb.d)
+      - ./docker/sql/entrypoint.sh:/entrypoint.sh # ← new line
+    entrypoint: ['/bin/bash', '/entrypoint.sh'] # ← new line
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'StaffPro@Dev2024!' -Q 'SELECT 1' -b -No -C || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: staffpro-mongodb
+    hostname: staffpro-mongodb
+    networks:
+      - staffpro-network
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: 'MongoDB@Dev2024'
+      MONGO_INITDB_DATABASE: staffpro_candidates
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodata:/data/db
+      - ./docker/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: staffpro-rabbitmq
+    hostname: staffpro-rabbitmq
+    networks:
+      - staffpro-network
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: staffpro
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  elasticsearch:
+    image: elasticsearch:8.14.0
+    container_name: staffpro-elasticsearch
+    hostname: staffpro-elasticsearch
+    networks:
+      - staffpro-network
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - cluster.name=staffpro-cluster
+      - node.name=staffpro-node-1
+    ports:
+      - '9200:9200'
+      - '9300:9300'
+    volumes:
+      - elasticdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --silent --fail http://localhost:9200/_cluster/health || exit 1']
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+  kibana:
+    image: kibana:8.14.0
+    container_name: staffpro-kibana
+    networks:
+      - staffpro-network
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - '5601:5601'
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    profiles:
+      - tools
+    restart: unless-stopped

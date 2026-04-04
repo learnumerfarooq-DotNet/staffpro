@@ -10,7 +10,15 @@ permissions:
   actions: read
   contents: read
 
+# ── Shared variables used by the NEW .NET job below ─────────────────
+env:
+  DOTNET_VERSION: '10.0.x'
+
 jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # EXISTING JOB — untouched, exactly as it was
+  # Handles: NX Cloud, format check, lint, test, build, typecheck, e2e
+  # ────────────────────────────────────────────────────────────────────
   main:
     runs-on: ubuntu-latest
     steps:
@@ -48,3 +56,61 @@ jobs:
         if: always()
         env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+
+  # ────────────────────────────────────────────────────────────────────
+  # NEW JOB — Build & Test .NET Microservices
+  #
+  # Runs in PARALLEL with the 'main' job above (independent).
+  # Uses a matrix strategy: runs once per service simultaneously.
+  #
+  # To add a new service: just add its name to the matrix list below.
+  # ────────────────────────────────────────────────────────────────────
+  build-and-test-dotnet:
+    name: Build & Test — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # fail-fast: false means if CompanyService fails, ClientService still runs
+      # (you see ALL failures at once, not just the first one)
+      fail-fast: false
+      matrix:
+        service:
+          - CompanyService
+          - ClientService
+          - EmployeeService
+          # ↓ Add more services here as you build them (Week 2+)
+          # - JobsService
+          # - CareersService
+          # - CandidateService
+          # - DashboardService
+
+    steps:
+      # Step 1: Download the repository code onto the GitHub runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Install the .NET SDK (version set in top-level env above)
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Step 3: Download all NuGet packages listed in the .csproj files
+      # Equivalent of npm install but for .NET
+      - name: Restore NuGet packages
+        run: dotnet restore
+        working-directory: apps/services/${{ matrix.service }}
+
+      # Step 4: Compile all C# code — catches syntax and type errors
+      # --no-restore: skip restore since we just did it in the step above
+      # --configuration Release: optimised build (no debug symbols)
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+        working-directory: apps/services/${{ matrix.service }}
+
+      # Step 5: Execute all unit tests in the service's .Tests project
+      # --no-build: reuse the binary from the Build step above
+      # --verbosity normal: prints each test name + pass/fail result
+      - name: Run unit tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+        working-directory: apps/services/${{ matrix.service }}
