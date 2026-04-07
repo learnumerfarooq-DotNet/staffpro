@@ -1,96 +1,75 @@
 ﻿// ─────────────────────────────────────────────────────────────────────────
-// Company.cs — The Company Aggregate Root
+// Company.cs — Company Aggregate Root (UPGRADED with Status + IsDeleted)
 //
-// An "Aggregate Root" is the main entity that all others in a domain
-// belong to. Rules:
-//   1. Only this class can mutate its own state
-//   2. All business rules are INSIDE this class
-//   3. No direct DB calls — just pure C# logic
+// CHANGES FROM DAY 8:
+//   ✅ Replaced bool IsActive + bool IsSetupComplete with CompanyStatus enum
+//   ✅ Added bool IsDeleted for soft delete
+//   ✅ Added proper lifecycle transitions: Activate(), Archive(), Delete()
+//   ✅ All lifecycle methods enforce valid state transitions
+//   ✅ New domain events: CompanyArchivedEvent, CompanyDeletedEvent
 // ─────────────────────────────────────────────────────────────────────────
 
+using CompanyService.Domain.Common;
 using CompanyService.Domain.Events;
 using CompanyService.Domain.Exceptions;
 using CompanyService.Domain.ValueObjects;
-using System.Net;
 
 namespace CompanyService.Domain.Entities;
 
 /// <summary>
-/// The core Company entity. Represents an organization using StaffPro.
-/// This is the Aggregate Root for the Company bounded context.
+/// Company aggregate root. Tracks status through the full lifecycle:
+/// Pending → Active → Archived (and soft-deletable at any point).
 /// </summary>
-public sealed class Company
+public sealed class Company : BaseEntity
 {
     // ─────────────────────────────────────────────────
-    // Private backing fields (no direct external access)
+    // Properties
     // ─────────────────────────────────────────────────
 
-    private readonly List<DomainEvent> _domainEvents = [];
-
-    // ─────────────────────────────────────────────────
-    // Properties (read-only externally, set by this class only)
-    // ─────────────────────────────────────────────────
-
-    /// <summary>Unique identifier (GUID)</summary>
-    public Guid Id { get; private set; }
-
-    /// <summary>Legal business name of the company</summary>
     public string Name { get; private set; } = string.Empty;
-
-    /// <summary>Short display name / brand name</summary>
     public string TradeName { get; private set; } = string.Empty;
-
-    /// <summary>Industry the company operates in</summary>
     public string Industry { get; private set; } = string.Empty;
-
-    /// <summary>Company size category</summary>
     public CompanySize Size { get; private set; }
-
-    /// <summary>Primary address of the company</summary>
     public Address HeadOfficeAddress { get; private set; } = null!;
-
-    /// <summary>Primary contact email</summary>
     public string ContactEmail { get; private set; } = string.Empty;
-
-    /// <summary>Primary contact phone number</summary>
     public string ContactPhone { get; private set; } = string.Empty;
-
-    /// <summary>Company website URL</summary>
     public string? Website { get; private set; }
-
-    /// <summary>Tax registration number</summary>
     public string TaxNumber { get; private set; } = string.Empty;
 
-    /// <summary>Whether the company has completed the onboarding wizard</summary>
-    public bool IsSetupComplete { get; private set; }
-
-    /// <summary>Whether the company account is active</summary>
-    public bool IsActive { get; private set; }
-
-    /// <summary>When this record was created (UTC)</summary>
-    public DateTime CreatedAt { get; private set; }
-
-    /// <summary>When this record was last modified (UTC)</summary>
-    public DateTime UpdatedAt { get; private set; }
-
-    /// <summary>Read-only domain events raised by this aggregate</summary>
-    public IReadOnlyList<DomainEvent> DomainEvents => _domainEvents.AsReadOnly();
-
-    // ─────────────────────────────────────────────────
-    // Private constructor — use factory methods below
-    // ─────────────────────────────────────────────────
-
-    private Company() { }
-
-    // ─────────────────────────────────────────────────
-    // FACTORY METHOD — Create a new Company
-    // ─────────────────────────────────────────────────
+    /// <summary>
+    /// Replaces the Week 1 bool IsActive + bool IsSetupComplete pair.
+    /// One enum carries both pieces of information:
+    ///   Pending  = registered, wizard incomplete (was: IsActive=true, IsSetupComplete=false)
+    ///   Active   = fully operational             (was: IsActive=true, IsSetupComplete=true)
+    ///   Archived = suspended/closed              (was: IsActive=false)
+    /// </summary>
+    public CompanyStatus Status { get; private set; }
 
     /// <summary>
-    /// Creates a new Company with all required business rules validated.
-    /// Raises a CompanyCreatedEvent.
+    /// Soft-delete flag.
+    /// true  = logically deleted (hidden from all normal queries via EF QueryFilter)
+    /// false = not deleted (default)
+    ///
+    /// WHY SOFT DELETE INSTEAD OF HARD DELETE?
+    ///   Hard delete: DELETE FROM Companies WHERE Id = ...
+    ///     Problem: Breaks audit logs, foreign keys, and any archived reports
+    ///   Soft delete: UPDATE Companies SET IsDeleted = 1
+    ///     Benefit: Data preserved for legal/audit; can be undeleted by admin
     /// </summary>
+    public bool IsDeleted { get; private set; }
+
+    // ─────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────
+
+    private Company(Guid tenantId) : base(tenantId) { }
+
+    // ─────────────────────────────────────────────────
+    // FACTORY METHOD
+    // ─────────────────────────────────────────────────
+
     public static Company Create(
+        Guid tenantId,
         string name,
         string tradeName,
         string industry,
@@ -101,26 +80,19 @@ public sealed class Company
         string taxNumber,
         string? website = null)
     {
-        // ── Business Rule 1: Name is required
+        if (tenantId == Guid.Empty)
+            throw new DomainException("TenantId cannot be empty.");
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Company name is required.");
-
-        // ── Business Rule 2: Name cannot exceed 200 characters
         if (name.Length > 200)
             throw new DomainException("Company name cannot exceed 200 characters.");
-
-        // ── Business Rule 3: Email must be valid
         if (!IsValidEmail(contactEmail))
-            throw new DomainException($"Contact email '{contactEmail}' is not a valid email address.");
-
-        // ── Business Rule 4: Tax number is required
+            throw new DomainException($"Contact email '{contactEmail}' is not valid.");
         if (string.IsNullOrWhiteSpace(taxNumber))
             throw new DomainException("Tax number is required.");
 
-        // ── Create the entity
-        var company = new Company
+        var company = new Company(tenantId)
         {
-            Id = Guid.NewGuid(),
             Name = name.Trim(),
             TradeName = tradeName.Trim(),
             Industry = industry.Trim(),
@@ -130,25 +102,106 @@ public sealed class Company
             ContactPhone = contactPhone.Trim(),
             TaxNumber = taxNumber.Trim(),
             Website = website?.Trim(),
-            IsSetupComplete = false,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            Status = CompanyStatus.Pending,   // ← always starts Pending
+            IsDeleted = false
         };
 
-        // ── Raise domain event (signals to other services that a company was created)
         company.RaiseEvent(new CompanyCreatedEvent(company.Id, company.Name, company.ContactEmail));
-
         return company;
     }
 
     // ─────────────────────────────────────────────────
-    // METHODS — Business Operations
+    // LIFECYCLE TRANSITIONS
     // ─────────────────────────────────────────────────
 
-    /// <summary>Update basic company details.</summary>
+    /// <summary>
+    /// Complete the onboarding wizard → moves Pending to Active.
+    ///
+    /// Business Rules:
+    ///   - Can only be called when Status is Pending
+    ///   - Deleted companies cannot be activated
+    /// </summary>
+    public void CompleteSetup()
+    {
+        if (IsDeleted)
+            throw new DomainException("Cannot activate a deleted company.");
+        if (Status != CompanyStatus.Pending)
+            throw new DomainException(
+                $"Cannot complete setup. Company status is '{Status}'. Expected 'Pending'.");
+
+        Status = CompanyStatus.Active;
+        UpdatedAt = DateTime.UtcNow;
+
+        RaiseEvent(new CompanySetupCompletedEvent(Id));
+    }
+
+    /// <summary>
+    /// Archive (suspend) the company → moves Active to Archived.
+    ///
+    /// Business Rules:
+    ///   - Can only be called when Status is Active
+    ///   - Deleted companies cannot be archived
+    /// </summary>
+    public void Archive()
+    {
+        if (IsDeleted)
+            throw new DomainException("Cannot archive a deleted company.");
+        if (Status == CompanyStatus.Archived)
+            throw new DomainException("Company is already archived.");
+        if (Status == CompanyStatus.Pending)
+            throw new DomainException("Cannot archive a company that has not completed setup.");
+
+        Status = CompanyStatus.Archived;
+        UpdatedAt = DateTime.UtcNow;
+
+        RaiseEvent(new CompanyArchivedEvent(Id));
+    }
+
+    /// <summary>
+    /// Reactivate an archived company → moves Archived back to Active.
+    ///
+    /// Business Rules:
+    ///   - Can only be called when Status is Archived
+    ///   - Deleted companies cannot be reactivated
+    /// </summary>
+    public void Reactivate()
+    {
+        if (IsDeleted)
+            throw new DomainException("Cannot reactivate a deleted company.");
+        if (Status != CompanyStatus.Archived)
+            throw new DomainException(
+                $"Cannot reactivate. Company status is '{Status}'. Expected 'Archived'.");
+
+        Status = CompanyStatus.Active;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Soft-delete the company. Sets IsDeleted = true.
+    /// The company is hidden from all normal queries via EF Query Filter.
+    ///
+    /// Business Rules:
+    ///   - Cannot delete an already-deleted company
+    /// </summary>
+    public void Delete()
+    {
+        if (IsDeleted)
+            throw new DomainException("Company is already deleted.");
+
+        IsDeleted = true;
+        UpdatedAt = DateTime.UtcNow;
+
+        RaiseEvent(new CompanyDeletedEvent(Id));
+    }
+
+    // ─────────────────────────────────────────────────
+    // UPDATE METHODS
+    // ─────────────────────────────────────────────────
+
     public void UpdateDetails(string name, string tradeName, string industry, CompanySize size)
     {
+        if (IsDeleted)
+            throw new DomainException("Cannot update a deleted company.");
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Company name cannot be empty.");
 
@@ -157,43 +210,35 @@ public sealed class Company
         Industry = industry.Trim();
         Size = size;
         UpdatedAt = DateTime.UtcNow;
+
+        RaiseEvent(new CompanyUpdatedEvent(Id, Name));
     }
 
-    /// <summary>Update the head office address.</summary>
     public void UpdateHeadOffice(Address newAddress)
     {
+        if (IsDeleted)
+            throw new DomainException("Cannot update a deleted company.");
+
         HeadOfficeAddress = newAddress ?? throw new DomainException("Address cannot be null.");
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Mark company setup as completed (after finishing the wizard).</summary>
-    public void CompleteSetup()
+    public void UpdateContactInfo(string contactEmail, string contactPhone, string? website)
     {
-        if (IsSetupComplete)
-            throw new DomainException("Company setup is already complete.");
+        if (IsDeleted)
+            throw new DomainException("Cannot update a deleted company.");
+        if (!IsValidEmail(contactEmail))
+            throw new DomainException($"Contact email '{contactEmail}' is not valid.");
 
-        IsSetupComplete = true;
+        ContactEmail = contactEmail.Trim().ToLowerInvariant();
+        ContactPhone = contactPhone.Trim();
+        Website = website?.Trim();
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Deactivate the company (soft delete).</summary>
-    public void Deactivate()
-    {
-        if (!IsActive)
-            throw new DomainException("Company is already deactivated.");
-
-        IsActive = false;
-        UpdatedAt = DateTime.UtcNow;
-    }
-
-    /// <summary>Clear all domain events after they've been dispatched.</summary>
-    public void ClearDomainEvents() => _domainEvents.Clear();
-
     // ─────────────────────────────────────────────────
-    // PRIVATE HELPERS
+    // Private Helpers
     // ─────────────────────────────────────────────────
-
-    private void RaiseEvent(DomainEvent domainEvent) => _domainEvents.Add(domainEvent);
 
     private static bool IsValidEmail(string email)
     {
@@ -203,19 +248,16 @@ public sealed class Company
             var addr = new System.Net.Mail.MailAddress(email);
             return addr.Address == email.Trim();
         }
-        catch
-        {
-            return false;
-        }
+        catch { return false; }
     }
 }
 
-/// <summary>Company size categories</summary>
+/// <summary>Company size categories.</summary>
 public enum CompanySize
 {
-    Startup = 1,     // 1–10 employees
-    Small = 2,       // 11–50 employees
-    Medium = 3,      // 51–250 employees
-    Large = 4,       // 251–1000 employees
-    Enterprise = 5   // 1000+ employees
+    Startup = 1,
+    Small = 2,
+    Medium = 3,
+    Large = 4,
+    Enterprise = 5
 }

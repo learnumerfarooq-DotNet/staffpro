@@ -1,8 +1,10 @@
 ﻿// ─────────────────────────────────────────────────────────────────────────
-// DependencyInjection.cs — Infrastructure Service Registration
+// DependencyInjection.cs (UPDATED)
 //
-// This extension method registers all Infrastructure services with the
-// ASP.NET Core DI container. The API project calls this at startup.
+// CHANGE FROM WEEK 1 (Day 4):
+//   CompanyDbContext now requires a Guid tenantId parameter.
+//   For now we use a placeholder Guid — in Week 4 (JWT auth) this will be
+//   replaced with the actual tenant ID from the JWT token claims.
 // ─────────────────────────────────────────────────────────────────────────
 
 using CompanyService.Domain.Interfaces;
@@ -16,17 +18,12 @@ namespace CompanyService.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>
-    /// Registers all Infrastructure layer services:
-    /// - EF Core DbContext
-    /// - Repository implementations
-    /// </summary>
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         // ── Register EF Core with SQL Server
-        services.AddDbContext<CompanyDbContext>(options =>
+        services.AddDbContext<CompanyDbContext>((serviceProvider, options) =>
         {
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
@@ -38,6 +35,21 @@ public static class DependencyInjection
                         maxRetryDelay: TimeSpan.FromSeconds(30),
                         errorNumbersToAdd: null);
                 });
+        });
+
+        // ── Register CompanyDbContext factory with tenantId
+        //    Week 4 will replace this placeholder with JWT token extraction:
+        //    Guid.Parse(httpContext.User.FindFirst("tenantId").Value)
+        services.AddDbContext<CompanyDbContext>((serviceProvider, options) =>
+        {
+            // 1. Configure SQL Server
+            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"));
+
+            // 2. Resolve tenant provider (optional, just for clarity)
+            var tenantProvider = serviceProvider.GetRequiredService<ITenantProvider>();
+
+            // CompanyDbContext constructor takes ITenantProvider and options
+            // Mediator is optional; will be injected at runtime if needed
         });
 
         // ── Register Repositories

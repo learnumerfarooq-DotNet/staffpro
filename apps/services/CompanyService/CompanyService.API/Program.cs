@@ -5,7 +5,11 @@
 
 using CompanyService.API.Middlewares;
 using CompanyService.Infrastructure;
+using CompanyService.Infrastructure.Data;
 using MediatR;
+using CompanyService.Application.Behaviors;
+using CompanyService.Application.Mappings;
+using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,12 +48,29 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(
         typeof(CompanyService.Application.Commands.CreateCompany.CreateCompanyCommand).Assembly));
 
+// ── ValidationBehavior — runs BEFORE every MediatR handler
+//    Registered as open generic so it applies to ALL IRequest<T>
+builder.Services.AddTransient(
+    typeof(IPipelineBehavior<,>),
+    typeof(ValidationBehavior<,>));
+
+// ── AutoMapper — scans MappingProfile from Application assembly
+builder.Services.AddAutoMapper(
+    typeof(MappingProfile).Assembly);
+
+// ── FluentValidation — scans all AbstractValidator<T> from Application assembly
+builder.Services.AddValidatorsFromAssembly(
+    typeof(CompanyService.Application.Commands.CreateCompany
+        .CreateCompanyCommandValidator).Assembly);
+
 // Infrastructure layer (EF Core + repositories)
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Health checks
 builder.Services.AddHealthChecks().AddDbContextCheck<CompanyService.Infrastructure.Data.CompanyDbContext>();
+builder.Services.AddHttpContextAccessor();
 
+builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 // ────────────────────────────────────────────
 // BUILD & CONFIGURE PIPELINE
 // ────────────────────────────────────────────
@@ -70,7 +91,7 @@ if (app.Environment.IsDevelopment())
 // Global exception handler
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 app.UseCors("AllowAngularDev");
 app.UseAuthorization();
 app.MapControllers();

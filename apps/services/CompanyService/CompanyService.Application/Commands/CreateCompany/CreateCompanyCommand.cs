@@ -1,27 +1,15 @@
-﻿// ─────────────────────────────────────────────────────────────────────────
-// CreateCompanyCommand.cs — CQRS Command
-//
-// A Command is a request to CHANGE something (POST/PUT/DELETE in REST).
-// Commands use MediatR — you send a command → the handler executes it.
-//
-// Pattern:
-//   Controller → sends CreateCompanyCommand
-//   → MediatR routes to CreateCompanyCommandHandler
-//   → Handler creates Company entity
-//   → Handler saves via ICompanyRepository
-//   → Returns CompanyDto
-// ─────────────────────────────────────────────────────────────────────────
-
-using CompanyService.Application.DTOs;
+﻿using CompanyService.Application.DTOs;
 using MediatR;
 
 namespace CompanyService.Application.Commands.CreateCompany;
 
 /// <summary>
 /// Command to create a new Company.
-/// Sent from the API controller after user submits the Company Setup Wizard.
+/// TenantId added — Company.Create() requires it (added in Week 2 Day 8).
+/// Week 4 will supply the real TenantId from the JWT token via the controller.
 /// </summary>
 public record CreateCompanyCommand(
+    Guid TenantId,          // ← identifies which tenant is registering
     string Name,
     string TradeName,
     string Industry,
@@ -31,9 +19,9 @@ public record CreateCompanyCommand(
     string ContactPhone,
     string TaxNumber,
     string? Website
-) : IRequest<CompanyDto>;  // Returns CompanyDto when handled
+) : IRequest<CompanyDto>;
 
-/// <summary>Address nested command</summary>
+/// <summary>Address nested inside the create command.</summary>
 public record CreateCompanyAddressCommand(
     string Street,
     string? ApartmentSuite,
